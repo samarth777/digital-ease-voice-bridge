@@ -1,4 +1,3 @@
-
 import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -6,6 +5,7 @@ import { Mic, MicOff, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import VoiceParticles from '@/components/VoiceParticles';
 import WaveformVisualizer from '@/components/WaveformVisualizer';
+import { apiService, playBase64Audio } from '@/lib/api';
 
 interface VoiceSession {
   isRecording: boolean;
@@ -14,6 +14,8 @@ interface VoiceSession {
   transcript: string;
   response: string;
   error: string;
+  sessionId?: string;
+  languageCode?: string;
 }
 
 const Index = () => {
@@ -24,7 +26,9 @@ const Index = () => {
     isPlaying: false,
     transcript: '',
     response: '',
-    error: ''
+    error: '',
+    sessionId: undefined,
+    languageCode: 'en-IN'
   });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -32,6 +36,35 @@ const Index = () => {
   const [audioLevel, setAudioLevel] = useState(0);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number>();
+  const audioElementRef = useRef<HTMLAudioElement | null>(null);
+
+  // Check API health on component mount
+  useEffect(() => {
+    checkAPIHealth();
+  }, []);
+
+  const checkAPIHealth = async () => {
+    try {
+      const data = await apiService.checkHealth();
+      console.log('✅ API Health:', data);
+      setSession(prev => ({ ...prev, error: '' }));
+      toast({
+        title: "🚀 Connected",
+        description: "Successfully connected to Sahayak AI backend",
+      });
+    } catch (error) {
+      console.error('❌ API Health Check Failed:', error);
+      setSession(prev => ({ 
+        ...prev, 
+        error: 'Backend connection failed. Please ensure the API server is running on port 8000.' 
+      }));
+      toast({
+        title: "⚠️ Connection Error",
+        description: "Could not connect to backend. Please start the API server.",
+        variant: "destructive"
+      });
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -110,53 +143,69 @@ const Index = () => {
 
   const processAudio = async (audioBlob: Blob) => {
     try {
-      const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.wav');
+      setSession(prev => ({ ...prev, isProcessing: true, error: '' }));
 
-      // Simulate processing with enhanced feedback
-      await simulateProcessing();
+      toast({
+        title: "🔄 Processing...",
+        description: "Converting speech to text and executing your command",
+      });
+
+      // Call the API service
+      const result = await apiService.processVoice(audioBlob, session.sessionId);
+      
+      // Update session with results
+      setSession(prev => ({ 
+        ...prev, 
+        isProcessing: false,
+        transcript: result.transcript,
+        response: result.response_text,
+        sessionId: result.agent_result?.session_id || prev.sessionId,
+        languageCode: result.detected_language,
+        isPlaying: true
+      }));
+
+      // Play the audio response if available
+      if (result.audio_base64) {
+        await playBase64Audio(result.audio_base64);
+        setSession(prev => ({ ...prev, isPlaying: false }));
+      } else {
+        // If no audio response, just show the text and mark as not playing
+        setSession(prev => ({ ...prev, isPlaying: false }));
+      }
+
+      toast({
+        title: "✅ Task Completed",
+        description: "Command executed successfully!",
+      });
       
     } catch (error) {
       console.error('Error processing audio:', error);
       setSession(prev => ({ 
         ...prev, 
         isProcessing: false, 
-        error: 'Failed to process audio command' 
+        isPlaying: false,
+        error: `Failed to process audio: ${error instanceof Error ? error.message : 'Unknown error'}` 
       }));
+      
+      toast({
+        title: "❌ Processing Error",
+        description: error instanceof Error ? error.message : 'Unknown error occurred',
+        variant: "destructive"
+      });
     }
   };
 
-  const simulateProcessing = async () => {
-    // Simulate speech-to-text
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const mockTranscript = "Open calculator application";
-    setSession(prev => ({ ...prev, transcript: mockTranscript }));
 
-    // Simulate agent processing
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    const mockResponse = "I have successfully opened the calculator application for you. Is there anything else you'd like me to help you with?";
-    
-    setSession(prev => ({ 
-      ...prev, 
-      isProcessing: false, 
-      response: mockResponse,
-      isPlaying: true 
-    }));
 
-    // Simulate text-to-speech playback
-    await new Promise(resolve => setTimeout(resolve, 4000));
-    setSession(prev => ({ ...prev, isPlaying: false }));
-    
-    toast({
-      title: "✅ Task Completed",
-      description: "Command executed successfully!",
-    });
-  };
-
+  // Cleanup function
   useEffect(() => {
     return () => {
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current);
+      }
+      if (audioElementRef.current) {
+        audioElementRef.current.pause();
+        audioElementRef.current = null;
       }
     };
   }, []);
@@ -220,8 +269,11 @@ const Index = () => {
               Your compassionate digital companion for effortless computer navigation
             </p>
             <div className="flex items-center justify-center space-x-2 text-sm text-gray-400">
-              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
-              <span>AI Assistant Ready</span>
+              <div className={`w-2 h-2 rounded-full animate-pulse ${session.error ? 'bg-red-400' : 'bg-green-400'}`}></div>
+              <span>{session.error ? 'Connection Error' : 'AI Assistant Ready'}</span>
+              {session.sessionId && (
+                <span className="text-xs text-purple-300">• Session: {session.sessionId.slice(0, 8)}...</span>
+              )}
             </div>
           </div>
 
@@ -233,7 +285,7 @@ const Index = () => {
                 <div className="relative">
                   <Button
                     {...buttonProps}
-                    disabled={session.isProcessing}
+                    disabled={session.isProcessing || !!session.error}
                   >
                     <div className="flex flex-col items-center space-y-3">
                       {buttonProps.icon}
@@ -252,8 +304,9 @@ const Index = () => {
                     {session.isRecording && "🎤 I'm listening... Speak naturally and clearly"}
                     {session.isProcessing && "🧠 Understanding your request and preparing to help..."}
                     {session.isPlaying && "🗣️ " + (session.response.slice(0, 50) + (session.response.length > 50 ? "..." : ""))}
-                    {!session.isRecording && !session.isProcessing && !session.isPlaying && 
+                    {!session.isRecording && !session.isProcessing && !session.isPlaying && !session.error && 
                       "Click the button and tell me what you'd like to do on your computer"}
+                    {session.error && "❌ Please check the connection and try again"}
                   </p>
                   
                   {session.isRecording && (
@@ -266,6 +319,12 @@ const Index = () => {
                         <div className="w-1 h-4 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
                       </div>
                       <span>Listening...</span>
+                    </div>
+                  )}
+
+                  {session.languageCode && session.languageCode !== 'en-IN' && (
+                    <div className="text-sm text-blue-300">
+                      🌐 Detected language: {session.languageCode}
                     </div>
                   )}
                 </div>
@@ -307,8 +366,17 @@ const Index = () => {
               {/* Error Display */}
               {session.error && (
                 <Card className="bg-red-500/20 border-red-400/30 backdrop-blur-sm animate-fade-in">
-                  <CardContent className="pt-6">
+                  <CardContent className="pt-6 space-y-4">
                     <p className="text-red-200 text-center text-lg">{session.error}</p>
+                    <div className="flex justify-center">
+                      <Button 
+                        onClick={checkAPIHealth}
+                        className="bg-red-600 hover:bg-red-700 text-white"
+                        size="sm"
+                      >
+                        Retry Connection
+                      </Button>
+                    </div>
                   </CardContent>
                 </Card>
               )}

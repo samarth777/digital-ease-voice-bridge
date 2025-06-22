@@ -1,73 +1,219 @@
-# Welcome to your Lovable project
+# Sahayak AI - Voice-Controlled Computer Interface
 
-## Project info
+A modern, accessible voice interface that allows users to control their computers through natural speech. Built with React + TypeScript frontend and FastAPI backend, powered by Sarvam AI for speech recognition and synthesis.
 
-**URL**: https://lovable.dev/projects/6ae7addc-bdf0-4dda-bf9f-5d3778ccfb1b
+## ✨ Features
 
-## How can I edit this code?
+- **🎤 Natural Speech Recognition** - Speak naturally in multiple languages
+- **🤖 Intelligent Computer Control** - Execute computer tasks through voice commands
+- **🗣️ Text-to-Speech Responses** - Get audio confirmations and guidance
+- **🎯 Session Management** - Continuous conversation context
+- **♿ Accessible Design** - Large buttons and clear visual feedback
+- **🌐 Multi-language Support** - Automatic language detection
 
-There are several ways of editing your application.
+## 🏗️ Architecture
 
-**Use Lovable**
+- **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
+- **Backend**: FastAPI + Python
+- **AI Services**: Sarvam AI for ASR and TTS
+- **Computer Control**: Custom computer use agent
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/6ae7addc-bdf0-4dda-bf9f-5d3778ccfb1b) and start prompting.
+## 🚀 Quick Start
 
-Changes made via Lovable will be committed automatically to this repo.
+### Prerequisites
 
-**Use your preferred IDE**
+- **Node.js** (v18 or later)
+- **Python** (v3.8 or later)
+- **Sarvam AI API Key** (sign up at [sarvam.ai](https://sarvam.ai))
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+### Installation
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+1. **Clone and setup the project:**
+```bash
+git clone <repository-url>
+cd digital-ease-voice-bridge
+```
 
-Follow these steps:
+2. **Install frontend dependencies:**
+```bash
+npm install
+```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+3. **Install backend dependencies:**
+```bash
+npm run install:backend
+# or manually:
+pip install fastapi uvicorn python-multipart requests pyaudio pygame
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+4. **Configure API Key:**
+   - Update `fastapi_backend.py` line 25 with your Sarvam API key:
+   ```python
+   API_KEY = "your_sarvam_api_key_here"
+   ```
 
-# Step 3: Install the necessary dependencies.
-npm i
+### Running the Application
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+#### Option 1: Run both services simultaneously (Recommended)
+```bash
+npm run start:all
+```
+
+#### Option 2: Run services separately
+
+**Terminal 1 - Backend:**
+```bash
+npm run backend:uvicorn
+# or
+uvicorn fastapi_backend:app --reload --host 0.0.0.0 --port 8000
+```
+
+**Terminal 2 - Frontend:**
+```bash
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+### Access the Application
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+- **Frontend**: http://localhost:5173
+- **Backend API**: http://localhost:8000
+- **API Docs**: http://localhost:8000/docs
 
-**Use GitHub Codespaces**
+## 🎯 Usage
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+1. **Start the Application** using one of the methods above
+2. **Click the microphone button** to start recording
+3. **Speak your command** clearly (e.g., "Open calculator", "Take a screenshot")
+4. **Wait for processing** - the AI will transcribe, execute, and respond
+5. **Listen to the response** - audio confirmation will play automatically
 
-## What technologies are used for this project?
+### Example Voice Commands
 
-This project is built with:
+- "Open calculator application"
+- "Take a screenshot"
+- "Open file explorer"
+- "Close the current window"
+- "Search for something on Google"
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## 🛠️ API Endpoints
 
-## How can I deploy this project?
+### Core Endpoints
 
-Simply open [Lovable](https://lovable.dev/projects/6ae7addc-bdf0-4dda-bf9f-5d3778ccfb1b) and click on Share -> Publish.
+- `POST /process-voice` - Complete voice processing pipeline
+- `POST /text-to-speech` - Convert text to speech
+- `POST /speech-to-text` - Convert speech to text only
+- `GET /health` - API health check
 
-## Can I connect a custom domain to my Lovable project?
+### Session Management
 
-Yes, you can!
+- `GET /sessions/{session_id}` - Get session info
+- `DELETE /sessions/{session_id}` - Delete session
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+## 🏁 Development
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+### Project Structure
+
+```
+digital-ease-voice-bridge/
+├── src/                    # Frontend source code
+│   ├── components/         # React components
+│   ├── lib/               # Utilities and API service
+│   ├── pages/             # Main application pages
+│   └── hooks/             # Custom React hooks
+├── fastapi_backend.py     # Backend API server
+├── voice_interface.py     # Voice processing logic
+└── computer_use_agent/    # Computer control agent
+```
+
+### Frontend Development
+
+```bash
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run lint         # Run linter
+```
+
+### Backend Development
+
+```bash
+npm run backend:uvicorn  # Start backend with auto-reload
+python fastapi_backend.py  # Direct Python execution
+```
+
+## 🔧 Configuration
+
+### Environment Variables
+
+Create a `.env` file for configuration:
+
+```env
+SARVAM_API_KEY=your_api_key_here
+API_BASE_URL=http://localhost:8000
+FRONTEND_URL=http://localhost:5173
+```
+
+### API Configuration
+
+Update `src/lib/api.ts` to change the API base URL:
+
+```typescript
+const API_BASE_URL = 'http://localhost:8000';
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**1. Microphone not working**
+- Check browser permissions for microphone access
+- Ensure you're using HTTPS or localhost
+- Try refreshing the page
+
+**2. Backend connection failed**
+- Ensure the FastAPI server is running on port 8000
+- Check if the API key is configured correctly
+- Verify Python dependencies are installed
+
+**3. Audio playback issues**
+- Check browser audio permissions
+- Ensure speakers/headphones are connected
+- Try using a different browser
+
+**4. Voice commands not working**
+- Speak clearly and at normal pace
+- Ensure good microphone quality
+- Check internet connection for API calls
+
+### Debug Mode
+
+Enable debug logging in the browser console to see detailed API interactions.
+
+## 🤝 Contributing
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- [Sarvam AI](https://sarvam.ai) for speech recognition and synthesis
+- [FastAPI](https://fastapi.tiangolo.com/) for the robust backend framework
+- [React](https://reactjs.org/) and [Vite](https://vitejs.dev/) for the frontend
+- [shadcn/ui](https://ui.shadcn.com/) for beautiful UI components
+
+## 📞 Support
+
+For support, please:
+1. Check the troubleshooting section above
+2. Search existing issues on GitHub
+3. Create a new issue with detailed information
+
+---
+
+**Made with ❤️ for accessible computing**
