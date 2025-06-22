@@ -1,9 +1,11 @@
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Mic, MicOff, Play, Stop } from 'lucide-react';
+import { Mic, MicOff, Play } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import VoiceParticles from '@/components/VoiceParticles';
+import WaveformVisualizer from '@/components/WaveformVisualizer';
 
 interface VoiceSession {
   isRecording: boolean;
@@ -27,6 +29,9 @@ const Index = () => {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const animationFrameRef = useRef<number>();
 
   const startRecording = async () => {
     try {
@@ -34,6 +39,24 @@ const Index = () => {
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
+
+      // Set up audio analysis for visualizations
+      const audioContext = new AudioContext();
+      const analyser = audioContext.createAnalyser();
+      const source = audioContext.createMediaStreamSource(stream);
+      source.connect(analyser);
+      analyser.fftSize = 256;
+      analyserRef.current = analyser;
+
+      const updateAudioLevel = () => {
+        if (analyserRef.current && session.isRecording) {
+          const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount);
+          analyserRef.current.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          setAudioLevel(average / 255);
+          animationFrameRef.current = requestAnimationFrame(updateAudioLevel);
+        }
+      };
 
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
@@ -45,14 +68,19 @@ const Index = () => {
         const audioBlob = new Blob(chunksRef.current, { type: 'audio/wav' });
         await processAudio(audioBlob);
         stream.getTracks().forEach(track => track.stop());
+        if (animationFrameRef.current) {
+          cancelAnimationFrame(animationFrameRef.current);
+        }
+        setAudioLevel(0);
       };
 
       mediaRecorder.start();
       setSession(prev => ({ ...prev, isRecording: true, transcript: '', response: '', error: '' }));
+      updateAudioLevel();
       
       toast({
-        title: "Recording Started",
-        description: "Speak your command clearly...",
+        title: "🎤 Listening...",
+        description: "Speak clearly and I'll help you with your computer tasks",
       });
 
       // Auto-stop after 10 seconds
@@ -66,8 +94,8 @@ const Index = () => {
       console.error('Error starting recording:', error);
       setSession(prev => ({ ...prev, error: 'Failed to access microphone' }));
       toast({
-        title: "Error",
-        description: "Could not access microphone. Please check permissions.",
+        title: "❌ Microphone Error",
+        description: "Please check your microphone permissions and try again.",
         variant: "destructive"
       });
     }
@@ -85,8 +113,7 @@ const Index = () => {
       const formData = new FormData();
       formData.append('audio', audioBlob, 'recording.wav');
 
-      // For now, simulate the API call since we don't have the FastAPI backend yet
-      // In the real implementation, this would call your FastAPI endpoint
+      // Simulate processing with enhanced feedback
       await simulateProcessing();
       
     } catch (error) {
@@ -107,7 +134,7 @@ const Index = () => {
 
     // Simulate agent processing
     await new Promise(resolve => setTimeout(resolve, 3000));
-    const mockResponse = "I have successfully opened the calculator application for you.";
+    const mockResponse = "I have successfully opened the calculator application for you. Is there anything else you'd like me to help you with?";
     
     setSession(prev => ({ 
       ...prev, 
@@ -121,39 +148,47 @@ const Index = () => {
     setSession(prev => ({ ...prev, isPlaying: false }));
     
     toast({
-      title: "Task Completed",
+      title: "✅ Task Completed",
       description: "Command executed successfully!",
     });
   };
+
+  useEffect(() => {
+    return () => {
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+      }
+    };
+  }, []);
 
   const getMainButtonProps = () => {
     if (session.isRecording) {
       return {
         onClick: stopRecording,
-        className: "w-32 h-32 rounded-full bg-red-500 hover:bg-red-600 text-white animate-pulse",
-        icon: <MicOff className="w-12 h-12" />,
-        text: "Stop"
+        className: "w-40 h-40 rounded-full bg-gradient-to-br from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white shadow-2xl transform hover:scale-105 transition-all duration-300 animate-pulse border-4 border-red-300",
+        icon: <MicOff className="w-16 h-16" />,
+        text: "Stop Recording"
       };
     } else if (session.isProcessing) {
       return {
         onClick: () => {},
-        className: "w-32 h-32 rounded-full bg-blue-500 text-white cursor-not-allowed",
-        icon: <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin" />,
-        text: "Processing"
+        className: "w-40 h-40 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 text-white cursor-not-allowed shadow-2xl",
+        icon: <div className="w-16 h-16 border-4 border-white border-t-transparent rounded-full animate-spin" />,
+        text: "Processing..."
       };
     } else if (session.isPlaying) {
       return {
         onClick: () => {},
-        className: "w-32 h-32 rounded-full bg-green-500 text-white animate-pulse cursor-not-allowed",
-        icon: <Play className="w-12 h-12" />,
-        text: "Speaking"
+        className: "w-40 h-40 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 text-white animate-pulse cursor-not-allowed shadow-2xl border-4 border-green-300",
+        icon: <Play className="w-16 h-16" />,
+        text: "Speaking..."
       };
     } else {
       return {
         onClick: startRecording,
-        className: "w-32 h-32 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white transform hover:scale-105 transition-all duration-200 shadow-lg",
-        icon: <Mic className="w-12 h-12" />,
-        text: "Start"
+        className: "w-40 h-40 rounded-full bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 hover:from-indigo-600 hover:via-purple-600 hover:to-pink-600 text-white transform hover:scale-110 transition-all duration-300 shadow-2xl hover:shadow-purple-500/25 border-4 border-white/20",
+        icon: <Mic className="w-16 h-16" />,
+        text: "Start Talking"
       };
     }
   };
@@ -161,122 +196,157 @@ const Index = () => {
   const buttonProps = getMainButtonProps();
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50 flex flex-col items-center justify-center p-4">
-      <div className="max-w-4xl w-full space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-5xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-            Sahayak AI
-          </h1>
-          <p className="text-xl text-gray-600 max-w-2xl mx-auto">
-            Your digital assistant for computer tasks. Speak naturally and let AI help you navigate technology with ease.
-          </p>
-        </div>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 relative overflow-hidden">
+      {/* Animated background elements */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-to-br from-purple-500/10 to-transparent rounded-full animate-pulse"></div>
+        <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-to-tl from-indigo-500/10 to-transparent rounded-full animate-pulse" style={{animationDelay: '2s'}}></div>
+      </div>
 
-        {/* Main Voice Interface */}
-        <Card className="bg-white/80 backdrop-blur-sm shadow-xl border-0">
-          <CardHeader>
-            <CardTitle className="text-center text-2xl text-gray-800">
-              Voice Assistant
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-8">
-            {/* Main Button */}
-            <div className="flex flex-col items-center space-y-4">
-              <Button
-                {...buttonProps}
-                disabled={session.isProcessing || session.isPlaying}
-              >
-                <div className="flex flex-col items-center space-y-2">
-                  {buttonProps.icon}
-                  <span className="text-lg font-semibold">{buttonProps.text}</span>
+      {/* Voice particles overlay */}
+      <VoiceParticles 
+        isActive={session.isRecording || session.isPlaying} 
+        intensity={session.isRecording ? audioLevel : 0.5}
+      />
+
+      <div className="relative z-10 flex flex-col items-center justify-center min-h-screen p-4">
+        <div className="max-w-4xl w-full space-y-8">
+          {/* Header */}
+          <div className="text-center space-y-6">
+            <h1 className="text-6xl md:text-7xl font-bold bg-gradient-to-r from-white via-purple-200 to-indigo-200 bg-clip-text text-transparent animate-fade-in">
+              Sahayak AI
+            </h1>
+            <p className="text-xl md:text-2xl text-gray-300 max-w-3xl mx-auto leading-relaxed">
+              Your compassionate digital companion for effortless computer navigation
+            </p>
+            <div className="flex items-center justify-center space-x-2 text-sm text-gray-400">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span>AI Assistant Ready</span>
+            </div>
+          </div>
+
+          {/* Main Voice Interface */}
+          <Card className="bg-white/10 backdrop-blur-xl shadow-2xl border border-white/20 rounded-3xl overflow-hidden">
+            <CardContent className="p-8 space-y-8">
+              {/* Main Button with Waveform */}
+              <div className="flex flex-col items-center space-y-6">
+                <div className="relative">
+                  <Button
+                    {...buttonProps}
+                    disabled={session.isProcessing}
+                  >
+                    <div className="flex flex-col items-center space-y-3">
+                      {buttonProps.icon}
+                      <span className="text-lg font-semibold">{buttonProps.text}</span>
+                    </div>
+                  </Button>
+                  
+                  {/* Waveform visualizer around the button */}
+                  {session.isRecording && (
+                    <WaveformVisualizer audioLevel={audioLevel} />
+                  )}
                 </div>
-              </Button>
-              
-              <p className="text-center text-gray-600 max-w-md">
-                {session.isRecording && "🎤 Listening... Speak your command clearly"}
-                {session.isProcessing && "🔄 Processing your request..."}
-                {session.isPlaying && "🔊 Playing response..."}
-                {!session.isRecording && !session.isProcessing && !session.isPlaying && 
-                  "Click the microphone to start voice interaction"}
-              </p>
-            </div>
+                
+                <div className="text-center space-y-2">
+                  <p className="text-white/90 text-lg max-w-md">
+                    {session.isRecording && "🎤 I'm listening... Speak naturally and clearly"}
+                    {session.isProcessing && "🧠 Understanding your request and preparing to help..."}
+                    {session.isPlaying && "🗣️ " + (session.response.slice(0, 50) + (session.response.length > 50 ? "..." : ""))}
+                    {!session.isRecording && !session.isProcessing && !session.isPlaying && 
+                      "Click the button and tell me what you'd like to do on your computer"}
+                  </p>
+                  
+                  {session.isRecording && (
+                    <div className="flex items-center justify-center space-x-2 text-sm text-purple-300">
+                      <div className="flex space-x-1">
+                        <div className="w-1 h-4 bg-purple-400 rounded-full animate-pulse"></div>
+                        <div className="w-1 h-6 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.1s'}}></div>
+                        <div className="w-1 h-8 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.2s'}}></div>
+                        <div className="w-1 h-6 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.3s'}}></div>
+                        <div className="w-1 h-4 bg-purple-400 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div>
+                      </div>
+                      <span>Listening...</span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-            {/* Status Cards */}
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Transcript */}
-              {session.transcript && (
-                <Card className="bg-blue-50 border-blue-200">
-                  <CardHeader>
-                    <CardTitle className="text-lg text-blue-800 flex items-center gap-2">
-                      <Mic className="w-5 h-5" />
-                      What you said
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-blue-700 text-lg italic">"{session.transcript}"</p>
+              {/* Status Cards */}
+              <div className="grid md:grid-cols-2 gap-6">
+                {/* Transcript */}
+                {session.transcript && (
+                  <Card className="bg-blue-500/20 border-blue-400/30 backdrop-blur-sm animate-fade-in">
+                    <CardHeader>
+                      <CardTitle className="text-lg text-blue-200 flex items-center gap-2">
+                        <Mic className="w-5 h-5" />
+                        What you said
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-blue-100 text-lg italic">"{session.transcript}"</p>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Response */}
+                {session.response && (
+                  <Card className="bg-green-500/20 border-green-400/30 backdrop-blur-sm animate-fade-in">
+                    <CardHeader>
+                      <CardTitle className="text-lg text-green-200 flex items-center gap-2">
+                        <Play className="w-5 h-5" />
+                        Sahayak's Response
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-green-100 text-lg">{session.response}</p>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
+
+              {/* Error Display */}
+              {session.error && (
+                <Card className="bg-red-500/20 border-red-400/30 backdrop-blur-sm animate-fade-in">
+                  <CardContent className="pt-6">
+                    <p className="text-red-200 text-center text-lg">{session.error}</p>
                   </CardContent>
                 </Card>
               )}
-
-              {/* Response */}
-              {session.response && (
-                <Card className="bg-green-50 border-green-200">
-                  <CardHeader>
-                    <CardTitle className="text-lg text-green-800 flex items-center gap-2">
-                      <Play className="w-5 h-5" />
-                      AI Response
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-green-700 text-lg">{session.response}</p>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
-
-            {/* Error Display */}
-            {session.error && (
-              <Card className="bg-red-50 border-red-200">
-                <CardContent className="pt-6">
-                  <p className="text-red-700 text-center">{session.error}</p>
-                </CardContent>
-              </Card>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Features */}
-        <div className="grid md:grid-cols-3 gap-6">
-          <Card className="bg-white/60 backdrop-blur-sm border-0 hover:bg-white/80 transition-all duration-200">
-            <CardContent className="pt-6 text-center space-y-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
-                <Mic className="w-6 h-6 text-blue-600" />
-              </div>
-              <h3 className="font-semibold text-gray-800">Voice Commands</h3>
-              <p className="text-sm text-gray-600">Speak naturally to control your computer and applications</p>
             </CardContent>
           </Card>
 
-          <Card className="bg-white/60 backdrop-blur-sm border-0 hover:bg-white/80 transition-all duration-200">
-            <CardContent className="pt-6 text-center space-y-3">
-              <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto">
-                <Play className="w-6 h-6 text-green-600" />
-              </div>
-              <h3 className="font-semibold text-gray-800">Audio Feedback</h3>
-              <p className="text-sm text-gray-600">Clear spoken responses to confirm actions and provide guidance</p>
-            </CardContent>
-          </Card>
+          {/* Features */}
+          <div className="grid md:grid-cols-3 gap-6">
+            <Card className="bg-white/10 backdrop-blur-xl border border-white/20 hover:bg-white/15 transition-all duration-300 group">
+              <CardContent className="pt-6 text-center space-y-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-blue-400 to-blue-600 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-300">
+                  <Mic className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="font-semibold text-white text-lg">Natural Speech</h3>
+                <p className="text-gray-300">Speak naturally in your preferred language</p>
+              </CardContent>
+            </Card>
 
-          <Card className="bg-white/60 backdrop-blur-sm border-0 hover:bg-white/80 transition-all duration-200">
-            <CardContent className="pt-6 text-center space-y-3">
-              <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto">
-                <div className="w-6 h-6 bg-purple-600 rounded-full animate-pulse" />
-              </div>
-              <h3 className="font-semibold text-gray-800">Accessible Design</h3>
-              <p className="text-sm text-gray-600">Large buttons and clear visual feedback for easy interaction</p>
-            </CardContent>
-          </Card>
+            <Card className="bg-white/10 backdrop-blur-xl border border-white/20 hover:bg-white/15 transition-all duration-300 group">
+              <CardContent className="pt-6 text-center space-y-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-300">
+                  <Play className="w-8 h-8 text-white" />
+                </div>
+                <h3 className="font-semibold text-white text-lg">Clear Guidance</h3>
+                <p className="text-gray-300">Receive spoken confirmations and helpful guidance</p>
+              </CardContent>
+            </Card>
+
+            <Card className="bg-white/10 backdrop-blur-xl border border-white/20 hover:bg-white/15 transition-all duration-300 group">
+              <CardContent className="pt-6 text-center space-y-4">
+                <div className="w-16 h-16 bg-gradient-to-br from-purple-400 to-purple-600 rounded-full flex items-center justify-center mx-auto group-hover:scale-110 transition-transform duration-300">
+                  <div className="w-8 h-8 bg-white rounded-full animate-pulse" />
+                </div>
+                <h3 className="font-semibold text-white text-lg">Accessible Design</h3>
+                <p className="text-gray-300">Large buttons and clear visual feedback</p>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
     </div>
